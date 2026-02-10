@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物品追踪器</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <!-- Firebase 初始化 -->
+    <script>
+        // Firebase 配置
+        // 注意：这里需要替换为您自己的Firebase项目配置
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+    </script>
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                        success: '#22c55e',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        info: '#0ea5e9',
+                        light: '#f8fafc',
+                        dark: '#1e293b'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    },
+                    animation: {
+                        'count-up': 'countUp 0.5s ease-out',
+                        'count-down': 'countDown 0.5s ease-out',
+                        'fade-in': 'fadeIn 0.3s ease-in-out',
+                        'slide-in': 'slideIn 0.3s ease-in-out'
+                    },
+                    keyframes: {
+                        countUp: {
+                            '0%': { transform: 'scale(1)', color: '#22c55e' },
+                            '50%': { transform: 'scale(1.2)', color: '#22c55e' },
+                            '100%': { transform: 'scale(1)' }
+                        },
+                        countDown: {
+                            '0%': { transform: 'scale(1)', color: '#ef4444' },
+                            '50%': { transform: 'scale(1.2)', color: '#ef4444' },
+                            '100%': { transform: 'scale(1)' }
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' }
+                        },
+                        slideIn: {
+                            '0%': { transform: 'translateY(-10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .glass-effect {
+                @apply bg-white bg-opacity-80 backdrop-blur-md;
+            }
+            .card-shadow {
+                @apply shadow-lg hover:shadow-xl transition-shadow duration-300;
+            }
+            .btn-transition {
+                @apply transition-all duration-200 transform hover:scale-105 active:scale-95;
+            }
+            .input-focus {
+                @apply focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200;
+            }
+            .table-row-hover {
+                @apply hover:bg-blue-50 transition-colors duration-200;
+            }
+            .number-animation {
+                @apply transition-all duration-300;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+        <!-- 头部标题 -->
+        <header class="text-center mb-8 animate-fade-in">
+            <h1 class="text-4xl font-bold text-primary mb-2">物品追踪器</h1>
+            <p class="text-secondary">轻松记录和管理您的特殊物品数量变化</p>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 左侧：物品列表 -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-dark">物品列表</h2>
+                        <button id="addItemBtn" class="bg-primary text-white px-3 py-1 rounded-lg btn-transition flex items-center">
+                            <i class="fa fa-plus mr-2"></i> 添加物品
+                        </button>
+                    </div>
+                    <div class="space-y-3" id="itemsList">
+                        <!-- 物品卡片将通过JS动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间和右侧：操作区域和历史记录 -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- 操作区域 -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <h2 class="text-xl font-semibold text-dark mb-4">物品操作</h2>
+                    <div id="operationPanel" class="hidden">
+                        <div class="mb-6">
+                            <h3 id="currentItemName" class="text-2xl font-bold text-primary mb-2">请选择物品</h3>
+                            <p class="text-secondary">当前数量: <span id="currentItemCount" class="font-semibold text-lg">0</span></p>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div class="bg-green-50 p-4 rounded-lg">
+                                <h4 class="text-success font-medium mb-2">增加数量</h4>
+                                <div class="flex items-center">
+                                    <input type="number" id="increaseAmount" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" min="1" value="1">
+                                    <button id="increaseBtn" class="bg-success text-white px-4 py-2 rounded-lg ml-2 btn-transition">
+                                        <i class="fa fa-arrow-up"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-red-50 p-4 rounded-lg">
+                                <h4 class="text-danger font-medium mb-2">减少数量</h4>
+                                <div class="flex items-center">
+                                    <input type="number" id="decreaseAmount" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" min="1" value="1">
+                                    <button id="decreaseBtn" class="bg-danger text-white px-4 py-2 rounded-lg ml-2 btn-transition">
+                                        <i class="fa fa-arrow-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h4 class="text-primary font-medium mb-2">备注信息</h4>
+                            <textarea id="operationNote" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" rows="2" placeholder="添加操作备注（可选）"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div id="noItemSelected" class="text-center py-12">
+                        <i class="fa fa-info-circle text-4xl text-secondary mb-4"></i>
+                        <p class="text-secondary text-lg">请从左侧选择一个物品进行操作</p>
+                    </div>
+                </div>
+
+                <!-- 历史记录 -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-dark">历史记录</h2>
+                        <div class="flex space-x-2">
+                            <select id="historyFilter" class="border border-gray-300 rounded-lg px-3 py-1 input-focus">
+                                <option value="all">全部记录</option>
+                                <option value="increase">仅增加</option>
+                                <option value="decrease">仅减少</option>
+                            </select>
+                            <button id="clearHistoryBtn" class="bg-secondary text-white px-3 py-1 rounded-lg btn-transition">
+                                <i class="fa fa-trash mr-1"></i> 清空
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="py-3 px-4 text-left text-sm font-medium text-secondary">时间</th>
+                                    <th class="py-3 px-4 text-left text-sm font-medium text-secondary">操作</th>
+                                    <th class="py-3 px-4 text-left text-sm font-medium text-secondary">数量</th>
+                                    <th class="py-3 px-4 text-left text-sm font-medium text-secondary">备注</th>
+                                    <th class="py-3 px-4 text-right text-sm font-medium text-secondary">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- 历史记录将通过JS动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="noHistoryMessage" class="text-center py-8 hidden">
+                        <p class="text-secondary">暂无历史记录</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加物品模态框 -->
+    <div id="addItemModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md animate-slide-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-dark">添加新物品</h3>
+                <button id="closeAddItemModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="addItemForm">
+                <div class="mb-4">
+                    <label for="itemName" class="block text-sm font-medium text-gray-700 mb-1">物品名称</label>
+                    <input type="text" id="itemName" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" required>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="initialCount" class="block text-sm font-medium text-gray-700 mb-1">初始数量</label>
+                    <input type="number" id="initialCount" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" min="0" value="0" required>
+                </div>
+                
+                <div class="mb-6">
+                    <label for="itemDescription" class="block text-sm font-medium text-gray-700 mb-1">描述（可选）</label>
+                    <textarea id="itemDescription" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" rows="2"></textarea>
+                </div>
+                
+                <div class="flex justify-end">
+                    <button type="button" id="cancelAddItem" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg mr-2 btn-transition">取消</button>
+                    <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg btn-transition">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 编辑历史记录模态框 -->
+    <div id="editHistoryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md animate-slide-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-dark">编辑历史记录</h3>
+                <button id="closeEditHistoryModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="editHistoryForm">
+                <input type="hidden" id="historyRecordId">
+                
+                <div class="mb-4">
+                    <label for="editHistoryAmount" class="block text-sm font-medium text-gray-700 mb-1">数量</label>
+                    <input type="number" id="editHistoryAmount" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" min="1" required>
+                </div>
+                
+                <div class="mb-6">
+                    <label for="editHistoryNote" class="block text-sm font-medium text-gray-700 mb-1">备注</label>
+                    <textarea id="editHistoryNote" class="w-full border border-gray-300 rounded-lg px-3 py-2 input-focus" rows="2"></textarea>
+                </div>
+                
+                <div class="flex justify-end">
+                    <button type="button" id="cancelEditHistory" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg mr-2 btn-transition">取消</button>
+                    <button type="submit" class="bg-primary text-white px-4 py-2 rounded-lg btn-transition">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 确认删除模态框 -->
+    <div id="confirmDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md animate-slide-in">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 text-danger mb-4">
+                    <i class="fa fa-exclamation-triangle text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-dark mb-2">确认删除</h3>
+                <p id="deleteConfirmMessage" class="text-secondary">您确定要执行此删除操作吗？此操作无法撤销。</p>
+            </div>
+            
+            <div class="flex justify-center space-x-4">
+                <button id="cancelDelete" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg btn-transition">取消</button>
+                <button id="confirmDelete" class="bg-danger text-white px-4 py-2 rounded-lg btn-transition">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="notification" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 transform translate-y-full opacity-0 transition-all duration-300 z-50 max-w-xs">
+        <div class="flex items-start">
+            <div id="notificationIcon" class="mr-3 mt-0.5 text-xl"></div>
+            <div class="flex-1">
+                <h4 id="notificationTitle" class="font-medium text-dark"></h4>
+                <p id="notificationMessage" class="text-sm text-secondary mt-1"></p>
+            </div>
+            <button id="closeNotification" class="text-gray-400 hover:text-gray-600 ml-4">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 应用数据
+        let items = [];
+        let history = [];
+        let currentItemId = null;
+        let deleteType = null; // 'item' 或 'history'
+        let deleteId = null;
+        let isDataLoaded = false;
+
+        // DOM 元素
+        const itemsList = document.getElementById('itemsList');
+        const operationPanel = document.getElementById('operationPanel');
+        const noItemSelected = document.getElementById('noItemSelected');
+        const currentItemName = document.getElementById('currentItemName');
+        const currentItemCount = document.getElementById('currentItemCount');
+        const historyTableBody = document.getElementById('historyTableBody');
+        const noHistoryMessage = document.getElementById('noHistoryMessage');
+        const historyFilter = document.getElementById('historyFilter');
+
+        // 模态框元素
+        const addItemModal = document.getElementById('addItemModal');
+        const editHistoryModal = document.getElementById('editHistoryModal');
+        const confirmDeleteModal = document.getElementById('confirmDeleteModal');
+
+        // 通知元素
+        const notification = document.getElementById('notification');
+        const notificationIcon = document.getElementById('notificationIcon');
+        const notificationTitle = document.getElementById('notificationTitle');
+        const notificationMessage = document.getElementById('notificationMessage');
+
+        // 初始化应用
+        function initApp() {
+            loadDataFromFirebase();
+            setupEventListeners();
+        }
+
+        // 从 Firebase 加载数据
+        function loadDataFromFirebase() {
+            // 加载物品数据
+            database.ref('items').on('value', (snapshot) => {
+                items = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (isDataLoaded) {
+                    renderItems();
+                    // 如果当前有选中的物品，更新显示
+                    if (currentItemId) {
+                        const currentItem = items.find(item => item.id === currentItemId);
+                        if (currentItem) {
+                            currentItemCount.textContent = currentItem.count;
+                        }
+                    }
+                }
+            });
+
+            // 加载历史记录数据
+            database.ref('history').on('value', (snapshot) => {
+                history = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (isDataLoaded) {
+                    renderHistory();
+                }
+            });
+
+            // 数据首次加载完成
+            setTimeout(() => {
+                isDataLoaded = true;
+                renderItems();
+                renderHistory();
+            }, 500);
+        }
+
+        // 保存数据到 Firebase
+        function saveDataToFirebase() {
+            // 保存物品数据
+            const itemsObject = {};
+            items.forEach(item => {
+                itemsObject[item.id] = item;
+            });
+            database.ref('items').set(itemsObject);
+
+            // 保存历史记录数据
+            const historyObject = {};
+            history.forEach(record => {
+                historyObject[record.id] = record;
+            });
+            database.ref('history').set(historyObject);
+        }
+
+        // 渲染物品列表
+        function renderItems() {
+            itemsList.innerHTML = '';
+            
+            if (items.length === 0) {
+                itemsList.innerHTML = `
+                    <div class="text-center py-6 text-secondary">
+                        <i class="fa fa-box text-3xl mb-2"></i>
+                        <p>暂无物品，请添加新物品</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            items.forEach(item => {
+                const itemCard = document.createElement('div');
+                itemCard.className = `bg-white border rounded-lg p-3 cursor-pointer transition-all duration-200 ${currentItemId === item.id ? 'border-primary bg-blue-50' : 'border-gray-200 hover:border-primary hover:bg-blue-50'}`;
+                itemCard.dataset.id = item.id;
+                
+                itemCard.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-medium text-dark">${item.name}</h3>
+                            <p class="text-sm text-secondary">${item.description || '无描述'}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="inline-block bg-primary bg-opacity-10 text-primary px-2 py-0.5 rounded-full text-sm font-medium">${item.count}</span>
+                            <button class="text-gray-400 hover:text-danger ml-2 edit-item-btn" data-id="${item.id}">
+                                <i class="fa fa-pencil"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                itemCard.addEventListener('click', (e) => {
+                    // 如果点击的是编辑按钮，不触发选择物品
+                    if (!e.target.closest('.edit-item-btn')) {
+                        selectItem(item.id);
+                    }
+                });
+                
+                itemsList.appendChild(itemCard);
+            });
+        }
+
+        // 选择物品
+        function selectItem(itemId) {
+            currentItemId = itemId;
+            const item = items.find(item => item.id === itemId);
+            
+            if (item) {
+                currentItemName.textContent = item.name;
+                currentItemCount.textContent = item.count;
+                operationPanel.classList.remove('hidden');
+                noItemSelected.classList.add('hidden');
+            } else {
+                currentItemName.textContent = '请选择物品';
+                currentItemCount.textContent = '0';
+                operationPanel.classList.add('hidden');
+                noItemSelected.classList.remove('hidden');
+            }
+            
+            renderItems();
+            renderHistory();
+        }
+
+        // 渲染历史记录
+        function renderHistory() {
+            const filteredHistory = filterHistory();
+            historyTableBody.innerHTML = '';
+            
+            if (filteredHistory.length === 0) {
+                noHistoryMessage.classList.remove('hidden');
+                return;
+            }
+            
+            noHistoryMessage.classList.add('hidden');
+            
+            filteredHistory.forEach(record => {
+                const item = items.find(item => item.id === record.itemId);
+                if (!item && currentItemId) return; // 如果筛选了特定物品但找不到记录，则跳过
+                
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-100 table-row-hover';
+                
+                const isIncrease = record.type === 'increase';
+                const amountClass = isIncrease ? 'text-success' : 'text-danger';
+                const amountSign = isIncrease ? '+' : '-';
+                
+                row.innerHTML = `
+                    <td class="py-3 px-4 text-sm text-secondary">${formatDateTime(record.timestamp)}</td>
+                    <td class="py-3 px-4">
+                        <div class="flex items-center">
+                            <span class="inline-block w-2 h-2 rounded-full ${isIncrease ? 'bg-success' : 'bg-danger'} mr-2"></span>
+                            <span>${isIncrease ? '增加' : '减少'}</span>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 font-medium ${amountClass}">${amountSign}${record.amount}</td>
+                    <td class="py-3 px-4 text-sm text-gray-600">${record.note || '-'}</td>
+                    <td class="py-3 px-4 text-right">
+                        <button class="text-gray-400 hover:text-primary mr-2 edit-history-btn" data-id="${record.id}">
+                            <i class="fa fa-pencil"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-danger delete-history-btn" data-id="${record.id}">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                
+                historyTableBody.appendChild(row);
+            });
+        }
+
+        // 筛选历史记录
+        function filterHistory() {
+            let filtered = [...history];
+            
+            // 如果选择了特定物品，则只显示该物品的记录
+            if (currentItemId) {
+                filtered = filtered.filter(record => record.itemId === currentItemId);
+            }
+            
+            // 根据操作类型筛选
+            const filterType = historyFilter.value;
+            if (filterType !== 'all') {
+                filtered = filtered.filter(record => record.type === filterType);
+            }
+            
+            // 按时间倒序排序
+            return filtered.sort((a, b) => b.timestamp - a.timestamp);
+        }
+
+        // 格式化日期时间
+        function formatDateTime(timestamp) {
+            const date = new Date(timestamp);
+            return `${date.getFullYear()}-${padZero(date.getMonth() + 1)}-${padZero(date.getDate())} ${padZero(date.getHours())}:${padZero(date.getMinutes())}`;
+        }
+
+        // 数字补零
+        function padZero(num) {
+            return num.toString().padStart(2, '0');
+        }
+
+        // 显示通知
+        function showNotification(type, title, message) {
+            // 设置图标和颜色
+            if (type === 'success') {
+                notificationIcon.className = 'fa fa-check-circle text-success';
+            } else if (type === 'error') {
+                notificationIcon.className = 'fa fa-exclamation-circle text-danger';
+            } else if (type === 'info') {
+                notificationIcon.className = 'fa fa-info-circle text-primary';
+            }
+            
+            notificationTitle.textContent = title;
+            notificationMessage.textContent = message;
+            
+            // 显示通知
+            notification.classList.remove('translate-y-full', 'opacity-0');
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                hideNotification();
+            }, 3000);
+        }
+
+        // 隐藏通知
+        function hideNotification() {
+            notification.classList.add('translate-y-full', 'opacity-0');
+        }
+
+        // 添加物品
+        function addItem(name, count, description = '') {
+            const newItem = {
+                id: Date.now().toString(),
+                name,
+                count: parseInt(count),
+                description
+            };
+            
+            items.push(newItem);
+            saveDataToFirebase();
+            renderItems();
+            
+            // 如果这是第一个物品，自动选择它
+            if (items.length === 1) {
+                selectItem(newItem.id);
+            }
+            
+            showNotification('success', '添加成功', `已添加物品"${name}"`);
+        }
+
+        // 更新物品
+        function updateItem(id, updates) {
+            const index = items.findIndex(item => item.id === id);
+            if (index !== -1) {
+                items[index] = { ...items[index], ...updates };
+                saveDataToFirebase();
+                renderItems();
+                
+                // 如果更新的是当前选中的物品，更新显示
+                if (currentItemId === id) {
+                    currentItemCount.textContent = items[index].count;
+                }
+                
+                showNotification('success', '更新成功', '物品信息已更新');
+            }
+        }
+
+        // 删除物品
+        function deleteItem(id) {
+            const itemIndex = items.findIndex(item => item.id === id);
+            if (itemIndex !== -1) {
+                const itemName = items[itemIndex].name;
+                items.splice(itemIndex, 1);
+                
+                // 同时删除该物品的所有历史记录
+                history = history.filter(record => record.itemId !== id);
+                
+                saveDataToFirebase();
+                renderItems();
+                renderHistory();
+                
+                // 如果删除的是当前选中的物品，取消选择
+                if (currentItemId === id) {
+                    selectItem(null);
+                }
+                
+                showNotification('info', '删除成功', `已删除物品"${itemName}"及其所有历史记录`);
+            }
+        }
+
+        // 执行数量变更操作
+        function performOperation(type, amount, note = '') {
+            if (!currentItemId) return;
+            
+            const item = items.find(item => item.id === currentItemId);
+            if (!item) return;
+            
+            const numAmount = parseInt(amount);
+            if (isNaN(numAmount) || numAmount <= 0) {
+                showNotification('error', '操作失败', '请输入有效的数量');
+                return;
+            }
+            
+            // 检查减少操作是否会导致负数
+            if (type === 'decrease' && item.count < numAmount) {
+                showNotification('error', '操作失败', '数量不足，无法减少');
+                return;
+            }
+            
+            // 更新物品数量
+            const oldCount = item.count;
+            item.count = type === 'increase' ? item.count + numAmount : item.count - numAmount;
+            
+            // 创建历史记录
+            const historyRecord = {
+                id: Date.now().toString(),
+                itemId: currentItemId,
+                type,
+                amount: numAmount,
+                timestamp: Date.now(),
+                note
+            };
+            
+            history.push(historyRecord);
+            
+            // 保存数据
+            saveDataToFirebase();
+            
+            // 更新UI
+            renderItems();
+            renderHistory();
+            
+            // 添加数量变化动画
+            currentItemCount.classList.add(type === 'increase' ? 'animate-count-up' : 'animate-count-down');
+            setTimeout(() => {
+                currentItemCount.classList.remove(type === 'increase' ? 'animate-count-up' : 'animate-count-down');
+                currentItemCount.textContent = item.count;
+            }, 500);
+            
+            showNotification('success', '操作成功', `${type === 'increase' ? '增加' : '减少'}了 ${numAmount} 个${item.name}`);
+        }
+
+        // 更新历史记录
+        function updateHistoryRecord(id, updates) {
+            const index = history.findIndex(record => record.id === id);
+            if (index !== -1) {
+                // 获取原始记录以计算数量差异
+                const originalRecord = history[index];
+                const item = items.find(item => item.id === originalRecord.itemId);
+                if (!item) return;
+                
+                // 计算数量差异
+                const oldAmount = originalRecord.amount;
+                const newAmount = parseInt(updates.amount);
+                
+                if (newAmount !== oldAmount) {
+                    // 更新物品数量
+                    const amountDiff = newAmount - oldAmount;
+                    item.count = originalRecord.type === 'increase' 
+                        ? item.count + amountDiff 
+                        : item.count - amountDiff;
+                    
+                    // 确保数量不为负
+                    if (item.count < 0) {
+                        showNotification('error', '更新失败', '数量调整会导致物品数量为负数');
+                        return;
+                    }
+                }
+                
+                // 更新历史记录
+                history[index] = { ...history[index], ...updates };
+                
+                // 保存数据
+                saveDataToFirebase();
+                
+                // 更新UI
+                renderItems();
+                renderHistory();
+                
+                // 如果更新的是当前选中物品的记录，更新显示
+                if (currentItemId === originalRecord.itemId) {
+                    currentItemCount.textContent = item.count;
+                }
+                
+                showNotification('success', '更新成功', '历史记录已更新');
+            }
+        }
+
+        // 删除历史记录
+        function deleteHistoryRecord(id) {
+            const index = history.findIndex(record => record.id === id);
+            if (index !== -1) {
+                const record = history[index];
+                const item = items.find(item => item.id === record.itemId);
+                
+                // 恢复物品数量
+                if (item) {
+                    item.count = record.type === 'increase' 
+                        ? item.count - record.amount 
+                        : item.count + record.amount;
+                }
+                
+                // 从历史记录中删除
+                history.splice(index, 1);
+                
+                // 保存数据
+                saveDataToFirebase();
+                
+                // 更新UI
+                renderItems();
+                renderHistory();
+                
+                // 如果删除的是当前选中物品的记录，更新显示
+                if (item && currentItemId === item.id) {
+                    currentItemCount.textContent = item.count;
+                }
+                
+                showNotification('info', '删除成功', '已删除历史记录并恢复物品数量');
+            }
+        }
+
+        // 清空所有历史记录
+        function clearAllHistory() {
+            // 确认对话框
+            if (confirm('确定要清空所有历史记录吗？此操作无法撤销，但不会影响当前物品数量。')) {
+                history = [];
+                saveDataToFirebase();
+                renderHistory();
+                showNotification('info', '操作成功', '已清空所有历史记录');
+            }
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 添加物品按钮
+            document.getElementById('addItemBtn').addEventListener('click', () => {
+                document.getElementById('itemName').value = '';
+                document.getElementById('initialCount').value = '0';
+                document.getElementById('itemDescription').value = '';
+                addItemModal.classList.remove('hidden');
+            });
+            
+            // 关闭添加物品模态框
+            document.getElementById('closeAddItemModal').addEventListener('click', () => {
+                addItemModal.classList.add('hidden');
+            });
+            
+            // 取消添加物品
+            document.getElementById('cancelAddItem').addEventListener('click', () => {
+                addItemModal.classList.add('hidden');
+            });
+            
+            // 添加物品表单提交
+            document.getElementById('addItemForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('itemName').value.trim();
+                const count = document.getElementById('initialCount').value;
+                const description = document.getElementById('itemDescription').value.trim();
+                
+                if (!name) {
+                    showNotification('error', '添加失败', '请输入物品名称');
+                    return;
+                }
+                
+                addItem(name, count, description);
+                addItemModal.classList.add('hidden');
+            });
+            
+            // 关闭编辑历史记录模态框
+            document.getElementById('closeEditHistoryModal').addEventListener('click', () => {
+                editHistoryModal.classList.add('hidden');
+            });
+            
+            // 取消编辑历史记录
+            document.getElementById('cancelEditHistory').addEventListener('click', () => {
+                editHistoryModal.classList.add('hidden');
+            });
+            
+            // 编辑历史记录表单提交
+            document.getElementById('editHistoryForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const id = document.getElementById('historyRecordId').value;
+                const amount = document.getElementById('editHistoryAmount').value;
+                const note = document.getElementById('editHistoryNote').value.trim();
+                
+                updateHistoryRecord(id, { amount: parseInt(amount), note });
+                editHistoryModal.classList.add('hidden');
+            });
+            
+            // 取消删除
+            document.getElementById('cancelDelete').addEventListener('click', () => {
+                confirmDeleteModal.classList.add('hidden');
+            });
+            
+            // 确认删除
+            document.getElementById('confirmDelete').addEventListener('click', () => {
+                if (deleteType === 'item') {
+                    deleteItem(deleteId);
+                } else if (deleteType === 'history') {
+                    deleteHistoryRecord(deleteId);
+                }
+                confirmDeleteModal.classList.add('hidden');
+            });
+            
+            // 关闭通知
+            document.getElementById('closeNotification').addEventListener('click', hideNotification);
+            
+            // 增加按钮
+            document.getElementById('increaseBtn').addEventListener('click', () => {
+                const amount = document.getElementById('increaseAmount').value;
+                const note = document.getElementById('operationNote').value.trim();
+                performOperation('increase', amount, note);
+                document.getElementById('operationNote').value = '';
+            });
+            
+            // 减少按钮
+            document.getElementById('decreaseBtn').addEventListener('click', () => {
+                const amount = document.getElementById('decreaseAmount').value;
+                const note = document.getElementById('operationNote').value.trim();
+                performOperation('decrease', amount, note);
+                document.getElementById('operationNote').value = '';
+            });
+            
+            // 历史记录筛选
+            historyFilter.addEventListener('change', renderHistory);
+            
+            // 清空历史记录
+            document.getElementById('clearHistoryBtn').addEventListener('click', clearAllHistory);
+            
+            // 委托事件：编辑物品按钮
+            itemsList.addEventListener('click', (e) => {
+                const editBtn = e.target.closest('.edit-item-btn');
+                if (editBtn) {
+                    e.stopPropagation();
+                    const itemId = editBtn.dataset.id;
+                    const item = items.find(item => item.id === itemId);
+                    if (item) {
+                        // 填充编辑表单
+                        document.getElementById('itemName').value = item.name;
+                        document.getElementById('initialCount').value = item.count;
+                        document.getElementById('itemDescription').value = item.description || '';
+                        
+                        // 修改表单提交行为
+                        const originalSubmitHandler = document.getElementById('addItemForm').onsubmit;
+                        document.getElementById('addItemForm').onsubmit = (e) => {
+                            e.preventDefault();
+                            const name = document.getElementById('itemName').value.trim();
+                            const count = document.getElementById('initialCount').value;
+                            const description = document.getElementById('itemDescription').value.trim();
+                            
+                            if (!name) {
+                                showNotification('error', '更新失败', '请输入物品名称');
+                                return;
+                            }
+                            
+                            updateItem(itemId, {
+                                name,
+                                count: parseInt(count),
+                                description
+                            });
+                            
+                            addItemModal.classList.add('hidden');
+                            
+                            // 恢复原始提交行为
+                            document.getElementById('addItemForm').onsubmit = originalSubmitHandler;
+                        };
+                        
+                        // 显示模态框
+                        document.querySelector('#addItemModal h3').textContent = '编辑物品';
+                        document.querySelector('#addItemForm button[type="submit"]').textContent = '保存';
+                        addItemModal.classList.remove('hidden');
+                        
+                        // 添加删除按钮
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'bg-danger text-white px-4 py-2 rounded-lg btn-transition';
+                        deleteBtn.textContent = '删除物品';
+                        deleteBtn.onclick = () => {
+                            document.getElementById('deleteConfirmMessage').textContent = `确定要删除物品"${item.name}"及其所有历史记录吗？此操作无法撤销。`;
+                            deleteType = 'item';
+                            deleteId = itemId;
+                            addItemModal.classList.add('hidden');
+                            confirmDeleteModal.classList.remove('hidden');
+                        };
+                        
+                        const buttonContainer = document.querySelector('#addItemForm .flex.justify-end');
+                        if (!buttonContainer.querySelector('.bg-danger')) {
+                            buttonContainer.appendChild(deleteBtn);
+                        }
+                    }
+                }
+            });
+            
+            // 委托事件：编辑和删除历史记录按钮
+            historyTableBody.addEventListener('click', (e) => {
+                // 编辑按钮
+                if (e.target.closest('.edit-history-btn')) {
+                    const btn = e.target.closest('.edit-history-btn');
+                    const recordId = btn.dataset.id;
+                    const record = history.find(r => r.id === recordId);
+                    
+                    if (record) {
+                        document.getElementById('historyRecordId').value = recordId;
+                        document.getElementById('editHistoryAmount').value = record.amount;
+                        document.getElementById('editHistoryNote').value = record.note || '';
+                        editHistoryModal.classList.remove('hidden');
+                    }
+                }
+                
+                // 删除按钮
+                if (e.target.closest('.delete-history-btn')) {
+                    const btn = e.target.closest('.delete-history-btn');
+                    const recordId = btn.dataset.id;
+                    const record = history.find(r => r.id === recordId);
+                    
+                    if (record) {
+                        const item = items.find(item => item.id === record.itemId);
+                        if (item) {
+                            document.getElementById('deleteConfirmMessage').textContent = 
+                                `确定要删除这条历史记录吗？此操作将恢复物品"${item.name}"的数量。`;
+                            deleteType = 'history';
+                            deleteId = recordId;
+                            confirmDeleteModal.classList.remove('hidden');
+                        }
+                    }
+                }
+            });
+        }
+
+        // 启动应用
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
