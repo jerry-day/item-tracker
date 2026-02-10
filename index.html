@@ -8,26 +8,37 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    
-    <!-- Firebase 初始化 -->
+    <!-- 本地存储 + 跨浏览器同步方案 -->
     <script>
-        // Firebase 配置
-        const firebaseConfig = {
-            apiKey: "AIzaSyDy8tArhShP54PbMJymqIE8s3TxPsrYwpM",
-            authDomain: "gooday-item-tracker.firebaseapp.com",
-            databaseURL: "https://gooday-item-tracker-default-rtdb.firebaseio.com",
-            projectId: "gooday-item-tracker",
-            storageBucket: "gooday-item-tracker.firebasestorage.app",
-            messagingSenderId: "991083951262",
-            appId: "1:991083951262:web:e2d56cbb6f0a6c9894378f"
-        };
+        // 应用数据
+        let items = JSON.parse(localStorage.getItem('trackerItems')) || [];
+        let history = JSON.parse(localStorage.getItem('trackerHistory')) || [];
         
-        // 初始化 Firebase
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+        // 保存数据到本地存储
+        function saveData() {
+            localStorage.setItem('trackerItems', JSON.stringify(items));
+            localStorage.setItem('trackerHistory', JSON.stringify(history));
+            console.log('✅ Data saved to localStorage');
+        }
+        
+        // 从其他标签页同步数据
+        window.addEventListener('storage', (event) => {
+            console.log('Storage event received:', event.key);
+            if (event.key === 'trackerItems') {
+                items = JSON.parse(event.newValue) || [];
+                renderItems();
+                // 如果当前有选中的物品，更新显示
+                if (currentItemId) {
+                    const currentItem = items.find(item => item.id === currentItemId);
+                    if (currentItem) {
+                        currentItemCount.textContent = currentItem.count;
+                    }
+                }
+            } else if (event.key === 'trackerHistory') {
+                history = JSON.parse(event.newValue) || [];
+                renderHistory();
+            }
+        });
     </script>
     
     <!-- Tailwind 配置 -->
@@ -311,12 +322,9 @@
 
     <script>
         // 应用数据
-        let items = [];
-        let history = [];
         let currentItemId = null;
         let deleteType = null; // 'item' 或 'history'
         let deleteId = null;
-        let isDataLoaded = false;
 
         // DOM 元素
         const itemsList = document.getElementById('itemsList');
@@ -341,91 +349,12 @@
 
         // 初始化应用
         function initApp() {
-            loadDataFromFirebase();
+            console.log('Initializing app with localStorage data...');
+            console.log('Initial items:', items);
+            console.log('Initial history:', history);
+            renderItems();
+            renderHistory();
             setupEventListeners();
-        }
-
-        // 从 Firebase 加载数据
-        function loadDataFromFirebase() {
-            console.log('Loading data from Firebase...');
-            
-            // 添加错误处理
-            firebase.database().ref().once('value')
-                .then(() => {
-                    console.log('✅ Firebase connection established');
-                })
-                .catch((error) => {
-                    console.error('❌ Firebase connection error:', error);
-                    showNotification('error', 'Firebase连接失败', '请检查Firebase配置和网络连接');
-                });
-
-            // 加载物品数据
-            database.ref('items').on('value', (snapshot) => {
-                console.log('Items data received:', snapshot.val());
-                items = snapshot.val() ? Object.values(snapshot.val()) : [];
-                if (isDataLoaded) {
-                    renderItems();
-                    // 如果当前有选中的物品，更新显示
-                    if (currentItemId) {
-                        const currentItem = items.find(item => item.id === currentItemId);
-                        if (currentItem) {
-                            currentItemCount.textContent = currentItem.count;
-                        }
-                    }
-                }
-            }, (error) => {
-                console.error('Error loading items:', error);
-            });
-
-            // 加载历史记录数据
-            database.ref('history').on('value', (snapshot) => {
-                console.log('History data received:', snapshot.val());
-                history = snapshot.val() ? Object.values(snapshot.val()) : [];
-                if (isDataLoaded) {
-                    renderHistory();
-                }
-            }, (error) => {
-                console.error('Error loading history:', error);
-            });
-
-            // 数据首次加载完成
-            setTimeout(() => {
-                isDataLoaded = true;
-                console.log('Initial data load complete');
-                renderItems();
-                renderHistory();
-            }, 500);
-        }
-
-        // 保存数据到 Firebase
-        function saveDataToFirebase() {
-            console.log('Saving data to Firebase...');
-            console.log('Items to save:', items);
-            console.log('History to save:', history);
-            
-            // 保存物品数据
-            const itemsObject = {};
-            items.forEach(item => {
-                itemsObject[item.id] = item;
-            });
-            
-            const historyObject = {};
-            history.forEach(record => {
-                historyObject[record.id] = record;
-            });
-            
-            // 使用 Promise 链确保数据正确保存
-            Promise.all([
-                database.ref('items').set(itemsObject),
-                database.ref('history').set(historyObject)
-            ])
-            .then(() => {
-                console.log('✅ Data saved successfully to Firebase');
-            })
-            .catch((error) => {
-                console.error('❌ Error saving data to Firebase:', error);
-                showNotification('error', '保存失败', '数据无法保存到Firebase，请检查网络连接');
-            });
         }
 
 
@@ -611,7 +540,7 @@
             };
             
             items.push(newItem);
-            saveDataToFirebase();
+            saveData();
             renderItems();
             
             // 如果这是第一个物品，自动选择它
@@ -627,7 +556,7 @@
             const index = items.findIndex(item => item.id === id);
             if (index !== -1) {
                 items[index] = { ...items[index], ...updates };
-                saveDataToFirebase();
+                saveData();
                 renderItems();
                 
                 // 如果更新的是当前选中的物品，更新显示
@@ -649,7 +578,7 @@
                 // 同时删除该物品的所有历史记录
                 history = history.filter(record => record.itemId !== id);
                 
-                saveDataToFirebase();
+                saveData();
                 renderItems();
                 renderHistory();
                 
@@ -698,7 +627,7 @@
             history.push(historyRecord);
             
             // 保存数据
-            saveDataToFirebase();
+            saveData();
             
             // 更新UI
             renderItems();
@@ -745,7 +674,7 @@
                 history[index] = { ...history[index], ...updates };
                 
                 // 保存数据
-                saveDataToFirebase();
+                saveData();
                 
                 // 更新UI
                 renderItems();
@@ -778,7 +707,7 @@
                 history.splice(index, 1);
                 
                 // 保存数据
-                saveDataToFirebase();
+                saveData();
                 
                 // 更新UI
                 renderItems();
@@ -798,7 +727,7 @@
             // 确认对话框
             if (confirm('确定要清空所有历史记录吗？此操作无法撤销，但不会影响当前物品数量。')) {
                 history = [];
-                saveDataToFirebase();
+                saveData();
                 renderHistory();
                 showNotification('info', '操作成功', '已清空所有历史记录');
             }
